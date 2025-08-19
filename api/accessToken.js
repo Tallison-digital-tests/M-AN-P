@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     let auth = req.headers.authorization;
 
     // 2) Fallback: body { token: "<PROPERTY_TOKEN>" }
-    if (!auth && req.body && req.body.token) auth = `Bearer ${req.body.token}`;
+    if (!auth && req.body && req.body.token) auth = `Bearer_${req.body.token}`;
 
     if (!auth) return res.status(400).json({ error: 'Missing Authorization (Bearer <token>)' });
 
