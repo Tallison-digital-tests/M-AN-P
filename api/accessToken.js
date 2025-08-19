@@ -13,21 +13,20 @@ export default async function handler(req, res) {
   try {
     const upstream = 'https://bradesco.md-apis.medallia.com/publicAPI/v2/accessToken';
 
-    // 1) Preferir Authorization do cliente: "Authorization: Bearer <PROPERTY_TOKEN>"
-    let auth = req.headers.authorization;
+    // 1) Preferir Authorization do cliente
+    let auth = req.headers.authorization?.trim();
 
-    // 2) Fallback: body { token: "<PROPERTY_TOKEN>" }
-    if (!auth && req.body && req.body.token) auth = `Bearer_${req.body.token}`;
+    // 2) Fallback: body { token }
+    if (!auth && req.body && req.body.token) auth = String(req.body.token).trim();
 
-    if (!auth) return res.status(400).json({ error: 'Missing Authorization (Bearer <token>)' });
+    if (!auth) return res.status(400).json({ error: 'Missing Authorization or token' });
 
-    const r = await fetch(upstream, {
-      method: 'POST',
-      headers: { 'Authorization': auth }
-      // sem body — esta instância autentica via header
-    });
+    // Normaliza: se não começar com bearer + (_ ou espaço), prefixa com bearer_
+    if (!/^bearer[_\s]/i.test(auth)) auth = `Bearer_${auth}`;
 
-    const data = await r.json().catch(() => ({}));
+    const r = await fetch(upstream, { method: 'POST', headers: { Authorization: auth } });
+    const txt = await r.text().catch(() => '');
+    let data; try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
     return res.status(r.status).json(data);
   } catch (e) {
     return res.status(500).json({ error: e.message || 'proxy error' });
