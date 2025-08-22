@@ -7,72 +7,61 @@ function setCors(res) {
 
 function authVariants(tok) {
   const t = String(tok || '').trim();
-  const variants = new Set();
-
-  // Se já vier com "Bearer " (espaço) ou "Bearer_" (underscore), gera as variações
+  const out = new Set();
   if (/^Bearer\s/i.test(t)) {
     const raw = t.replace(/^Bearer\s+/i, '');
-    variants.add(`Bearer ${raw}`);
-    variants.add(`bearer_${raw}`);
-    variants.add(t);
+    out.add(`Bearer ${raw}`); out.add(`bearer_${raw}`); out.add(t);
   } else if (/^Bearer_/i.test(t)) {
     const raw = t.replace(/^Bearer_/i, '');
-    variants.add(`Bearer ${raw}`);
-    variants.add(`bearer_${raw}`);
-    variants.add(t);
+    out.add(`Bearer ${raw}`); out.add(`bearer_${raw}`); out.add(t);
   } else if (/^bearer[_\s]/i.test(t)) {
     const raw = t.replace(/^bearer[_\s]/i, '');
-    variants.add(`Bearer ${raw}`);
-    variants.add(`bearer_${raw}`);
-    variants.add(t);
+    out.add(`Bearer ${raw}`); out.add(`bearer_${raw}`); out.add(t);
   } else {
-    // Sem prefixo → testa os dois e o cru
-    variants.add(`Bearer ${t}`);
-    variants.add(`bearer_${t}`);
-    variants.add(t);
+    out.add(`Bearer ${t}`); out.add(`bearer_${t}`); out.add(t);
   }
-
-  return Array.from(variants);
+  return Array.from(out);
 }
 
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { accessToken, payload } = req.body || {};
+    const { accessToken, ...rest } = req.query || {};
     if (!accessToken) return res.status(400).json({ error: 'Missing accessToken' });
-    if (!payload)     return res.status(400).json({ error: 'Missing payload' });
 
-    const upstream = 'https://bradesco.md-apis.medallia.com/publicAPI/v2/configuration';
+    // Não encaminhar "form" ou "formId" na query
+    delete rest.form;
+    delete rest.formId;
 
-    // Tenta variações do Authorization até não ser 401/403
+    // Remonta a query string com os demais parâmetros
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(rest)) {
+      if (Array.isArray(v)) v.forEach(item => qs.append(k, String(item)));
+      else if (v !== undefined && v !== null) qs.append(k, String(v));
+    }
+
+    const upstreamBase = 'https://bradesco.md-apis.medallia.com/publicAPI/v2/configuration';
+    const upstreamUrl = qs.toString() ? `${upstreamBase}?${qs.toString()}` : upstreamBase;
+
     let lastTxt = '';
     let lastStatus = 500;
-    for (const auth of authVariants(accessToken)) {
-      const r = await fetch(upstream, {
-        method: 'POST',
-        headers: {
-          'Authorization': auth,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
 
+    // Tenta formatos de Authorization automaticamente
+    for (const auth of authVariants(accessToken)) {
+      const r = await fetch(upstreamUrl, { headers: { Authorization: auth, Accept: 'application/json' } });
       lastStatus = r.status;
       const txt = await r.text().catch(() => '');
       lastTxt = txt;
 
-      // se NÃO for auth error, devolve
       if (r.status !== 401 && r.status !== 403) {
         try { return res.status(r.status).json(JSON.parse(txt)); }
         catch { return res.status(r.status).json({ raw: txt }); }
       }
     }
 
-    // todas falharam com 401/403
     try { return res.status(lastStatus).json(JSON.parse(lastTxt || '{}')); }
     catch { return res.status(lastStatus).json({ raw: lastTxt }); }
   } catch (e) {
