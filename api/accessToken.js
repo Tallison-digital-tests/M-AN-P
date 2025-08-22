@@ -1,36 +1,32 @@
-// /api/accessToken.js
 function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', 'https://tallison-digital-tests.github.io');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
 }
-
+function asBearerUnderscore(tok) {
+  const t = String(tok || '').trim();
+  if (/^Bearer_/i.test(t)) return t;
+  if (/^Bearer\s+/i.test(t)) return 'Bearer_' + t.replace(/^Bearer\s+/i, '');
+  if (/^bearer[_\s]/i.test(t)) return 'Bearer_' + t.replace(/^bearer[_\s]/i, '');
+  return `Bearer_${t}`;
+}
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
   try {
-    const upstream = 'https://bradesco.md-apis.medallia.com/publicAPI/v2/accessToken';
+    // Aceita header Authorization OU body { token }
+    let auth = req.headers.authorization;
+    if (!auth && req.body && req.body.token) auth = String(req.body.token);
+    if (!auth) return res.status(400).json({ error: 'Missing Authorization/token' });
 
-    // 1) Preferir Authorization do cliente
-    let auth = req.headers.authorization?.trim();
-
-    // 2) Fallback: body { token }
-    if (!auth && req.body && req.body.token) auth = String(req.body.token).trim();
-
-    if (!auth) return res.status(400).json({ error: 'Missing Authorization or token' });
-
-    // Normaliza: se não começar com bearer + (_ ou espaço), prefixa com bearer_
-    if (!/^bearer[_\s]/i.test(auth)) auth = `Bearer_${auth}`;
-
-
-
-
-    const r = await fetch(upstream, { method: 'POST', headers: { Authorization: auth } });
-    const txt = await r.text().catch(() => '');
-    let data; try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
-    return res.status(r.status).json(data);
+    const r = await fetch('https://bradesco.md-apis.medallia.com/publicAPI/v2/accessToken', {
+      method: 'POST',
+      headers: { Authorization: asBearerUnderscore(auth) }
+    });
+    const txt = await r.text().catch(()=> '');
+    try { return res.status(r.status).json(JSON.parse(txt)); }
+    catch { return res.status(r.status).json({ raw: txt }); }
   } catch (e) {
     return res.status(500).json({ error: e.message || 'proxy error' });
   }
