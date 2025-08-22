@@ -5,7 +5,6 @@ function setCors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
 }
 
-
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -14,20 +13,17 @@ export default async function handler(req, res) {
   try {
     const upstream = 'https://bradesco.md-apis.medallia.com/publicAPI/v2/accessToken';
 
-
-
     // 1) Preferir Authorization do cliente
     let auth = req.headers.authorization?.trim();
 
     // 2) Fallback: body { token }
     if (!auth && req.body && req.body.token) auth = String(req.body.token).trim();
 
-
-
     if (!auth) return res.status(400).json({ error: 'Missing Authorization or token' });
 
     // Normaliza: se não começar com bearer + (_ ou espaço), prefixa com bearer_
     if (!/^bearer[_\s]/i.test(auth)) auth = `Bearer_${auth}`;
+
 
 
 
@@ -38,3 +34,4 @@ export default async function handler(req, res) {
   } catch (e) {
     return res.status(500).json({ error: e.message || 'proxy error' });
   }
+}
